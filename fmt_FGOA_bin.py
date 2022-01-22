@@ -40,6 +40,8 @@ class ObjData:
         self.Bone25 = int()
         self.StringC = int()
         self.StringLOC = int()
+        self.MorphDC = int()
+        self.MorphData = int()
         self.MorphC = int()
         self.MorphNames = int()
 
@@ -72,7 +74,7 @@ class Morph:
     def __init__(self) -> None:
         self.Name = str()
         self.Pad = int()
-        self.UNK = int()
+        self.UNK4ID = int()
         self.Count = int()
         self.Pad2 = int()
 
@@ -297,7 +299,7 @@ def GetUNK29(bs, LOC, Count, St):
         Mo.Name = St[bs.readInt64()]
         Mo.Pad = bs.readInt64()
         bs.seek(56, 1)
-        Mo.UNK = bs.readInt()
+        Mo.UNK4ID = bs.readInt()
         Mo.Count2 = bs.readInt()
         bs.seek(8, 1)
         Mo.Pad2 = bs.readInt64()
@@ -433,6 +435,8 @@ def noepyLoadModel(data, mdlList):
         O.Bone25 = B25
         O.StringC = StringBlockC
         O.StringLOC = StringBlockLOC
+        O.MorphData = ObjListBlock[29]+BlockLOC
+        O.MorphDC = ObjListBlock[28]
         O.MorphC = ObjListBlock[30]
         O.MorphNames = ObjListBlock[31]+BlockLOC
         ObjList.append(O)
@@ -449,6 +453,7 @@ def noepyLoadModel(data, mdlList):
         U = GetUNK4(bs, C.UNK4LOC, C.UNK4Count)
         A = GetAttrib(bs, C.AttribLOC, C.SubCount)
         B25L, Sort = GetUNK25(bs, C.Bone25, ObjTables[M], S)
+        MD = GetUNK29(bs, C.MorphData, C.MorphDC, S)
         MN = GetUNK31(bs, C.MorphNames, C.MorphC, S)
         print("Attrib", len(A), "UNK4", len(U))
         #print(A, U)
@@ -459,6 +464,9 @@ def noepyLoadModel(data, mdlList):
             UC = U[X]
             print(UC.__dict__)
             BoneMapL = []
+            if UC.MorphCount:
+                CMD = MD[MorphTotal]
+                MorphTotal += 1
             for SC in range(0, UC.UseCount):
                 BoneMapL = []
                 CA = A[SC+Add]
@@ -475,8 +483,8 @@ def noepyLoadModel(data, mdlList):
                 bs.seek(C.FLOC+CA.FacePush)
                 FaceBlock = bs.readBytes(CA.FaceCount*2)
                 if UC.MorphCount:
-                    MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MorphTotal)
-                    MorphTotal+= UC.MorphCount
+                    print(X, len(MN), MorphTotal)
+                    MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, CMD)
                 print(M, SC, S[UC.UNKID]+"_"+str(SC))
                 rapi.rpgSetName(S[UC.UNKID]+"_"+str(SC))
                 rapi.rpgSetMaterial(MM[CA.UNKInt[0]].Name)
@@ -552,8 +560,11 @@ def noepyLoadModel(data, mdlList):
 
 def MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MT):
     bs.seek((C.VLOC+CA.VertexPush)+(CA.VertexCount*UC.VStride))
+    MD = MT
     for Mor in range(0, UC.MorphCount):
-        rapi.rpgSetName(MN[MT+Mor])
+        rapi.rpgClearBufferBinds()
+        print(Mor, MN[Mor+MT.Pad], bs.tell())
+        rapi.rpgSetName(MN[Mor+MT.Pad])
         MorphNormals = bytearray()
         Morphs = bs.readBytes(CA.VertexCount*UC.VStride)
         for Mo in range(0, CA.VertexCount):
@@ -565,4 +576,5 @@ def MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MT):
                         #rapi.rpgFeedMorphTargetNormals(MorphNormals, noesis.RPGEODATA_FLOAT, 12)
                         # rapi.rpgCommitMorphFrame(CA.VertexCount)
                     # rapi.rpgCommitMorphFrameSet()
+        rapi.rpgBindUV1BufferOfs(Morphs, noesis.RPGEODATA_USHORT, UC.VStride, 20)
         rapi.rpgCommitTriangles(FaceBlock, noesis.RPGEODATA_USHORT, CA.FaceCount, noesis.RPGEO_TRIANGLE_STRIP, 1)
