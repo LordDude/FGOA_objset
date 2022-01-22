@@ -449,7 +449,7 @@ def noepyLoadModel(data, mdlList):
         U = GetUNK4(bs, C.UNK4LOC, C.UNK4Count)
         A = GetAttrib(bs, C.AttribLOC, C.SubCount)
         B25L, Sort = GetUNK25(bs, C.Bone25, ObjTables[M], S)
-        MN = GetUNK31(bs, C.MorphNames, O.MorphC, S)
+        MN = GetUNK31(bs, C.MorphNames, C.MorphC, S)
         print("Attrib", len(A), "UNK4", len(U))
         #print(A, U)
         # boneList, Sort = GetSkel(bs, C.SkelLOC, S)
@@ -519,19 +519,8 @@ def noepyLoadModel(data, mdlList):
                             rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 28, 4)
                             rapi.rpgBindBoneIndexBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 32, 4)
                     else:
-                        print("Skin Type 1")
-                        if CA.BoneMapCount == 1:
-                            print("AutoMapWeights")
-                            WBlock = []
-                            IBlock = []
-                            for VV in range(0, CA.VertexCount):
-                                IBlock.append(0)
-                                IBlock.append(65535)
-                            AutoIBlock = struct.pack('H'*len(IBlock), *IBlock)
-                            #print(AutoIBlock)
-                            rapi.rpgBindBoneWeightBufferOfs(AutoIBlock, noesis.RPGEODATA_USHORT, 4, 2, 1)
-                            rapi.rpgBindBoneIndexBufferOfs(AutoIBlock, noesis.RPGEODATA_USHORT, 4, 0, 1)
-                        else:
+                        if UC.DataType & V_Skin == V_Skin:
+                            print("Skin Type 1")
                             if UC.DataType & V_COL != V_COL:
                                 print("Skin With No Color")
                                 rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 24, 4)
@@ -540,6 +529,17 @@ def noepyLoadModel(data, mdlList):
                                 print("Skin Color")
                                 rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 28, 4)
                                 rapi.rpgBindBoneIndexBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 32, 4)
+                    if CA.BoneMapCount == 1:
+                        print("AutoMapWeights")
+                        WBlock = []
+                        IBlock = []
+                        for VV in range(0, CA.VertexCount):
+                            IBlock.append(0)
+                            IBlock.append(65535)
+                        AutoIBlock = struct.pack('H'*len(IBlock), *IBlock)
+                        #print(AutoIBlock)
+                        rapi.rpgBindBoneWeightBufferOfs(AutoIBlock, noesis.RPGEODATA_USHORT, 4, 2, 1)
+                        rapi.rpgBindBoneIndexBufferOfs(AutoIBlock, noesis.RPGEODATA_USHORT, 4, 0, 1)
                 rapi.rpgCommitTriangles(FaceBlock, noesis.RPGEODATA_USHORT, CA.FaceCount, noesis.RPGEO_TRIANGLE_STRIP, 1)
             Add += UC.UseCount
             rapi.rpgClearBufferBinds()
