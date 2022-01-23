@@ -446,6 +446,7 @@ def noepyLoadModel(data, mdlList):
     V_Skin = 512
     V_Skin2 = 256
     for M in range(0, len(ObjList)):
+        rapi.rpgReset()
         C = ObjList[M]
         print(C.__dict__)
         S = GetStrings(bs, C.StringLOC, C.StringC)
@@ -549,13 +550,14 @@ def noepyLoadModel(data, mdlList):
                         rapi.rpgBindBoneWeightBufferOfs(AutoIBlock, noesis.RPGEODATA_USHORT, 4, 2, 1)
                         rapi.rpgBindBoneIndexBufferOfs(AutoIBlock, noesis.RPGEODATA_USHORT, 4, 0, 1)
                 rapi.rpgCommitTriangles(FaceBlock, noesis.RPGEODATA_USHORT, CA.FaceCount, noesis.RPGEO_TRIANGLE_STRIP, 1)
+                rapi.rpgClearBufferBinds()
             Add += UC.UseCount
             rapi.rpgClearBufferBinds()
-    mdl = rapi.rpgConstructModel()
-    if B25L:
-        B25L = rapi.multiplyBones(B25L)
-        mdl.setBones(B25L)
-    mdlList.append(mdl)
+        mdl = rapi.rpgConstructModel()
+        if B25L:
+            B25L = rapi.multiplyBones(B25L)
+            mdl.setBones(B25L)
+        mdlList.append(mdl)
     return 1
 
 def MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MT):
