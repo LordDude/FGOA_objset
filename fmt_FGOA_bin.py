@@ -11,6 +11,8 @@ def registerNoesisTypes():
 def noepyCheckType(data):
 	if len(data) < 8:
 		return 0
+	# else:
+	# 	return 1
 	bs = NoeBitStream(data)
 
 	if bs.readInt() != int(84288768):
@@ -256,13 +258,9 @@ def GetUNK25(bs, LOC, Plus, St):
     Count2 = bs.readInt()
     Count3 = bs.readInt()
     bs.seek(POS0+Plus)
+    BoneNames = []
+    Dups = []
     for u in range(0, Count0):
-        # rot = NoeQuat.fromBytes(bs.readBytes(16))
-        # bs.seek(8,1)
-        # pos = NoeVec3.fromBytes(bs.readBytes(12))
-        # bs.seek(12,1)
-        # mat = rot.toMat43()
-        # mat.__setitem__(3,(pos[0],pos[1],pos[2]))
         m01, m02, m03, m04 = bs.read("4f")
         m11, m12, m13, m14 = bs.read("4f")
         m21, m22, m23, m24 = bs.read("4f")
@@ -276,19 +274,21 @@ def GetUNK25(bs, LOC, Plus, St):
         boneMtx2[3] = boneMtx[3]
         boneInvMatrixList.append(boneMtx2)
         Name = St[bs.readInt64()]
+        if Name in BoneNames:
+            Dups.append(Name)
+            Name = Name+"_duplicate_"+str(u)
+        BoneNames.append(Name)
         Parent = bs.readInt64()
         UNK1 = bs.readInt64()
         UNK2 = bs.readInt64()
         UNK3 = bs.readInt64()
         UNK4 = bs.readInt64()
-        #print(Sk.Name)
-        # if Sk.Parent != -1:
-        #     print(M, Sk.Name, Bone25List[Sk.Parent].Name)
         Bone25List.append(NoeBone(u, Name, boneMtx2, None, Parent))
     bs.seek(POS4+Plus)
     for rm in range(0, Count2):
         Bone25Remap.append(bs.readInt())
-    print(Bone25Remap)
+    #print(Bone25Remap)
+    print(Dups)
     return Bone25List, Bone25Remap
 
 def GetUNK29(bs, LOC, Count, St):
@@ -365,18 +365,18 @@ def GetSkel(bs, LOC, St):
         BT = BoneClass()
         BT.ParentID = ParentList[K]
         #BT.Name = BoneNames[Sort[K]-1]
-        BT.Name = St[Sort[K]-1]
+        # BT.Name = St[Sort[K]-1]
         BT.Mat = MatList[K]
         BT.BoneID = Sort[K]-1
-        if K == 0:
-            SortedBoneList[BoneCount - Sort[K]] = BT
-        else:
-            SortedBoneList[Sort[K]] = BT
+        # if K == 0:
+        #     SortedBoneList[BoneCount - Sort[K]] = BT
+        # else:
+        #     SortedBoneList[Sort[K]] = BT
     for Q in range(0, BoneCount):
-        CB = Sort2[Q]
-        Held = St[Sort[Q]]
-        boneList.append(NoeBone(Q, Held, MatList[Q], None, ParentList[Q]))
-        #boneList.append(NoeBone(Q, "bone_"+str(Q), MatList[Q], None, ParentList[Q]))
+        # CB = Sort2[Q]
+        # Held = St[Sort[Q]]
+        #boneList.append(NoeBone(Q, Held, MatList[Q], None, ParentList[Q]))
+        boneList.append(NoeBone(Q, "bone_"+str(Q), MatList[Q], None, ParentList[Q]))
     #print("BoneEnd", bs.tell())
     return boneList, Sort
     
@@ -443,22 +443,27 @@ def noepyLoadModel(data, mdlList):
         print(O.__dict__)
     V_COL = 128
     V_UV = 8
+    V_UV2 = 16
     V_Skin = 512
-    V_Skin2 = 256
+    V_ID = 1024
+    V_COL2 = 256
     for M in range(0, len(ObjList)):
         rapi.rpgReset()
         C = ObjList[M]
+        Skip = 0
         print(C.__dict__)
         S = GetStrings(bs, C.StringLOC, C.StringC)
         MM = GetMaterials(bs, C.Mats, C.MatC, S)
         U = GetUNK4(bs, C.UNK4LOC, C.UNK4Count)
         A = GetAttrib(bs, C.AttribLOC, C.SubCount)
-        B25L, Sort = GetUNK25(bs, C.Bone25, ObjTables[M], S)
+        if C.Bone25 == ObjTables[M]:
+            B25L, Sort = GetSkel(bs, C.SkelLOC, S)
+        else:
+            B25L, Sort = GetUNK25(bs, C.Bone25, ObjTables[M], S)
         MD = GetUNK29(bs, C.MorphData, C.MorphDC, S)
         MN = GetUNK31(bs, C.MorphNames, C.MorphC, S)
         print("Attrib", len(A), "UNK4", len(U))
         #print(A, U)
-        # boneList, Sort = GetSkel(bs, C.SkelLOC, S)
         Add = 0
         MorphTotal = 0
         for X in range(0, len(U)):
@@ -493,21 +498,46 @@ def noepyLoadModel(data, mdlList):
                 for Q in range(0, CA.VertexCount):
                     normals+= VertBlock[Q*UC.VStride+12:Q*UC.VStride+12+4]
                 norm = rapi.decodeNormals32(normals, 4, -10, -10, -10, NOE_LITTLEENDIAN)
+                tang = bytearray()
+                for T in range(0, CA.VertexCount):
+                    tang+= VertBlock[T*UC.VStride+16:T*UC.VStride+16+4]
+                tangent = rapi.decodeTangents32(tang, 4, -7, -7, -7, -7, NOE_LITTLEENDIAN)
                 rapi.rpgBindPositionBufferOfs(VertBlock, noesis.RPGEODATA_FLOAT, UC.VStride, 0)
                 rapi.rpgBindNormalBuffer(norm, noesis.RPGEODATA_FLOAT, 12)
+                rapi.rpgBindTangentBuffer(tangent, noesis.RPGEODATA_FLOAT, 12)
+                Push = 16
                 if UC.DataType & V_UV == V_UV:
+                    Push += 4
+                    Push2 = Push+2
+                    print("UV", Push, Push2)
                     UV = []
                     for n in range(0, CA.VertexCount):
-                        UVU = int.from_bytes(VertBlock[n*UC.VStride+20:n*UC.VStride+20+2], 'little') * CA.UNKF[0]
-                        UVV = int.from_bytes(VertBlock[n*UC.VStride+22:n*UC.VStride+22+2], 'little') * CA.UNKF[1]
+                        UVU = int.from_bytes(VertBlock[n*UC.VStride+Push:n*UC.VStride+Push+2], 'little') * CA.UNKF[0]
+                        UVV = int.from_bytes(VertBlock[n*UC.VStride+Push2:n*UC.VStride+Push2+2], 'little') * CA.UNKF[1]
                         UV.append(UVU)
                         UV.append(UVV)
                     UV = struct.pack('f'*len(UV), *UV)
                     rapi.rpgBindUV1Buffer(UV, noesis.RPGEODATA_FLOAT, 8)
                     O = NoeVec3((CA.UNKF[2],CA.UNKF[3],float(1)))
                     rapi.rpgSetUVScaleBias(None, O)
+                if UC.DataType & V_UV2 == V_UV2:
+                    Push += 4
+                    Push2 = Push+2
+                    UV = []
+                    print("UV2", Push, Push2)
+                    for n in range(0, CA.VertexCount):
+                        UVU = int.from_bytes(VertBlock[n*UC.VStride+Push:n*UC.VStride+Push+2], 'little') * CA.UNKF[0]
+                        UVV = int.from_bytes(VertBlock[n*UC.VStride+Push2:n*UC.VStride+Push2+2], 'little') * CA.UNKF[1]
+                        UV.append(UVU)
+                        UV.append(UVV)
+                    UV = struct.pack('f'*len(UV), *UV)
+                    rapi.rpgBindUV2Buffer(UV, noesis.RPGEODATA_FLOAT, 8)
+                    O = NoeVec3((CA.UNKF[2],CA.UNKF[3],float(1)))
+                    rapi.rpgSetUVScaleBias(None, O)
                 if UC.DataType & V_COL == V_COL:
-                    rapi.rpgBindColorBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 24, 4)
+                    Push += 4
+                    print("Color", Push)
+                    rapi.rpgBindColorBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, Push, 4)
                 else:
                     VCOL = []
                     for v in range(0, CA.VertexCount):
@@ -517,27 +547,17 @@ def noepyLoadModel(data, mdlList):
                         VCOL.append(float(1.0))
                     VCB = struct.pack('f'*len(VCOL), *VCOL)
                     rapi.rpgBindColorBuffer(VCB, noesis.RPGEODATA_FLOAT, 16, 4)
+                if UC.DataType & V_COL2 == V_COL2:
+                    #Only one Color Buffer can be used
+                    Push+= 4
+                    #rapi.rpgBindColorBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, Push, 4)
+                if Skin and UC.DataType & V_ID == V_ID:
+                    Push += 4
+                    Push2 = Push+4
+                    print("Skin", Push, Push2)
+                    rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, Push, 4)
+                    rapi.rpgBindBoneIndexBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, Push2, 4)
                 if Skin:
-                    if UC.DataType & V_Skin2 == V_Skin2:
-                        print("Skin Type 2")
-                        if UC.DataType & V_COL == V_COL:
-                            rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 32, 4)
-                            rapi.rpgBindBoneIndexBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 36, 4)
-                        else:
-                            print("Skin With No Color")
-                            rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 28, 4)
-                            rapi.rpgBindBoneIndexBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 32, 4)
-                    else:
-                        if UC.DataType & V_Skin == V_Skin:
-                            print("Skin Type 1")
-                            if UC.DataType & V_COL != V_COL:
-                                print("Skin With No Color")
-                                rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 24, 4)
-                                rapi.rpgBindBoneIndexBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 28, 4)
-                            else:
-                                print("Skin Color")
-                                rapi.rpgBindBoneWeightBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 28, 4)
-                                rapi.rpgBindBoneIndexBufferOfs(VertBlock, noesis.RPGEODATA_UBYTE, UC.VStride, 32, 4)
                     if CA.BoneMapCount == 1:
                         print("AutoMapWeights")
                         WBlock = []
@@ -565,7 +585,7 @@ def MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MT):
     MD = MT
     for Mor in range(0, UC.MorphCount):
         rapi.rpgClearBufferBinds()
-        print(Mor, MN[Mor+MT.Pad], bs.tell())
+        #print(Mor, MN[Mor+MT.Pad], bs.tell())
         rapi.rpgSetName(MN[Mor+MT.Pad])
         MorphNormals = bytearray()
         Morphs = bs.readBytes(CA.VertexCount*UC.VStride)
