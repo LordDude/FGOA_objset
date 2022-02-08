@@ -46,6 +46,9 @@ class ObjData:
         self.MorphData = int()
         self.MorphC = int()
         self.MorphNames = int()
+        self.TexBind = int()
+        self.TexBindC = int()
+        self.TextureList = int()
 
 class Attribs:
     def __init__(self) -> None:
@@ -104,12 +107,25 @@ class Material:
         self.UNKF11 = float()
         self.UNKF12 = float()
         self.UNKF13 = float()
+        self.TextureList = []
 
 class Bone25:
     def __init__(self) -> None:
         self.Mat43 = bytes()
         self.Name = str()
         self.Parent = int()
+
+class TextureID:
+    def __init__(self) -> None:
+        self.Name = str()
+        self.UNK1 = int()
+        self.UNK2 = int()
+
+class TBind:
+    def __init__(self) -> None:
+        self.Name = str()
+        self.UNK1 = int()
+        self.UNK2 = int()
 
 def GetNames(bs, LOC, C):
     Names = []
@@ -195,52 +211,77 @@ def GetStrings(bs, LOC, Count):
         # print(Strings[S])
     return Strings
 #16
-def GetMaterials(bs, LOC, Count, St) -> Material():
+def GetMaterials(bs, LOC, Count, St, E) -> Material():
     Materials = []
+    MatList = []
     bs.seek(LOC)
-    #print(LOC, Count)
     for S in range(0, Count):
         M = Material()
-        #print(bs.tell())
         M.Name = St[bs.readUInt64()]
-        bs.seek(16, 1)
-        M.UNK1 = bs.readInt()
-        M.UNK2 = bs.readInt()
+        M.UNK1 = bs.readInt64()
+        M.UNK2 = bs.readInt64()
         M.UNK3 = bs.readInt()
         M.UNK4 = bs.readInt()
-        M.UNK5 = bs.readInt()
-        M.UNKF1 = bs.readFloat()
-        M.UNKF2 = bs.readFloat()
+        bs.seek(136, 1)
         M.UNK6 = bs.readInt64()
-        M.UNK7 = bs.readInt()
-        M.UNKF3 = bs.readFloat()
-        M.UNKF4 = bs.readFloat()
-        M.UNKF5 = bs.readFloat()
-        M.UNKF6 = bs.readFloat()
-        M.UNK8 = bs.readInt()
-        M.UNKF7 = bs.readFloat()
-        M.UNKF8 = bs.readFloat()
-        M.UNKF9 = bs.readFloat()
-        M.UNKF10 = bs.readFloat()
-        M.UNKF11 = bs.readFloat()
-        M.UNKF12 = bs.readFloat()
-        M.UNKF13 = bs.readFloat()
-        bs.seek(72, 1)
+        M.UNK7 = bs.readInt64()
+        for X in range(0, M.UNK3):
+            M.TextureList.append(str(E[M.UNK1+X].Name)+","+str(E[M.UNK1+X].UNK1)+","+str(E[M.UNK1+X].UNK2))
         Materials.append(M)
-    return Materials
+    for MT in range(0, len(Materials)):
+        CM = Materials[MT]
+        material = NoeMaterial(CM.Name, "")
+        for Z in range(0, len(CM.TextureList)):
+            CTL = CM.TextureList[Z]
+            if CTL.rsplit(',')[1] == str(0):
+                material.setTexture(CTL.rsplit(',')[0])
+            elif CTL.rsplit(',')[1] == str(4):
+                material.setSpecularTexture(CTL.rsplit(',')[0])
+            elif CTL.rsplit(',')[1] == str(8):
+                material.setNormalTexture(CTL.rsplit(',')[0])
+            elif CTL.rsplit(',')[1] == str(16):
+                material.setOpacityTexture(CTL.rsplit(',')[0])
+                material.setDefaultBlend(0)
+                #material.setBlendMode("GL_ONE", "GL_ONE_MINUS_SRC_ALPHA")
+                material.setAlphaTest(0.333)
+            elif CTL.rsplit(',')[1] == str(18):
+                material.setEnvTexture(CTL.rsplit(',')[0])
+        MatList.append(material)
+    return Materials, MatList
+#18
+def GetUNK18(bs, LOC, Count, T):
+    bs.seek(LOC)
+    List = []
+    for Q in range(0, Count):
+        #Size 56
+        TB = TBind()
+        if len(T) > 1:
+            TB.Name = T[bs.readInt()]
+        else:
+            TB.Name = bs.readInt()
+        TB.UNK1 = bs.readInt()
+        TB.UNK2 = bs.readInt()
+        bs.seek(44, 1)
+        List.append(TB)
+    return List
 #22
-def GetTextureList(bs, LOC, St):
+def GetTextureList(bs, LOC, B, St):
+    Test1 = []
     Test2 = []
     bs.seek(LOC)
-    UNK1 = bs.readUInt64()+80
-    UNK2 = bs.readUInt64()+80
+    UNK1 = bs.readUInt64()+B
+    UNK2 = bs.readUInt64()+B
     Count = bs.readUInt64()
     bs.seek(UNK2)
     for T2 in range(0, Count):
-        Test2.append(St[bs.readInt64()])
-        bs.seek(16, 1)
-        print(Test2[T2])
-    return Test2
+        T = TextureID()
+        T.Name = St[bs.readInt64()]
+        T.UNK1 = bs.readInt64()
+        T.UNK2 = bs.readInt64()
+        Test2.append(T.Name)
+        for X in range(0, T.UNK1):
+            Test1.append(T.Name)
+    return Test1, Test2
 
 def GetUNK25(bs, LOC, Plus, St):
     Bone25List = []
@@ -260,6 +301,7 @@ def GetUNK25(bs, LOC, Plus, St):
     bs.seek(POS0+Plus)
     BoneNames = []
     Dups = []
+    #Mostly lifted from fmt_SEGA_bin by Minmode
     for u in range(0, Count0):
         m01, m02, m03, m04 = bs.read("4f")
         m11, m12, m13, m14 = bs.read("4f")
@@ -379,12 +421,119 @@ def GetSkel(bs, LOC, St):
         boneList.append(NoeBone(Q, "bone_"+str(Q), MatList[Q], None, ParentList[Q]))
     #print("BoneEnd", bs.tell())
     return boneList, Sort
-    
+####Lifted tex_FGOA_txp by Silvris####
+def getTextureFormat(format):
+    if format == 98:
+        return "a8"
+    elif format == 99:
+        return "r8g8b8"
+    elif format == 100:
+        return "r8g8b8a8"
+    elif format == 101:
+        return "r5g5b5"
+    elif format == 102:
+        return "r5g5b5a1"
+    # elif format == 103:
+    #     return "r4g4b4a4"
+    elif format == 103:
+        return noesis.FOURCC_DXT1
+    elif format == 104:
+        return noesis.FOURCC_DXT1
+    elif format == 105:
+        return noesis.FOURCC_DXT1
+    elif format == 107:
+        return noesis.FOURCC_DXT3
+    elif format == 109:
+        return noesis.FOURCC_DXT5
+    elif format == 112:
+        return noesis.FOURCC_ATI1
+    elif format == 115:
+        return noesis.FOURCC_ATI2
+    elif format == 130:
+        return noesis.FOURCC_BC7
+    elif format == 131:
+        return noesis.FOURCC_BC7
+def texLoadTexSet(bs, Name):
+    texList = []
+    Add = bs.tell()
+    magic = bs.readUInt()
+    mipCount = bs.readUInt()
+    mipCount2 = bs.readByte()
+    mipslice = bs.readByte()
+    bs.seek(2,1)
+    lengths = []
+    offsets = []
+    for _ in range(mipCount):
+        offsets.append(bs.readUInt()+Add)
+    slices = []
+    for B in range(0, mipslice):
+        slices.append(offsets[(B*mipCount2)])
+    bs.seek(slices[0])
+    if mipslice > 1:
+        texList = texLoadARGB(bs, slices, 1, Name)
+    else:
+        texList = texLoadARGB(bs, slices, 0, Name)
+    return texList
+def texLoadARGB(bs, loc, C, Name):
+    pix = bytearray()
+    for E in range(0, len(loc)):
+        bs.seek(loc[E])
+        magic = bs.readUInt()
+        width = max(bs.readUInt(),4)
+        height = max(bs.readUInt(),4)
+        formatInt = bs.readUInt()
+        Format = getTextureFormat(formatInt)
+        id = bs.readUInt()
+        length = bs.readUInt()
+        ugh = bs.readBytes(length)
+        if formatInt < 103:
+            pix+=rapi.imageDecodeRaw(ugh,width,height,Format)
+        else:
+            pix+=rapi.imageDecodeDXT(ugh,width,height,Format)
+    if C:
+        U = NoeTexture(Name, width, height, pix, noesis.NOESISTEX_RGBA32)
+        U.setFlags(noesis.NTEXFLAG_CUBEMAP)
+        U.setMipCount(1)
+        return U
+    else:
+        return NoeTexture(Name, width, height, pix, noesis.NOESISTEX_RGBA32)
+def LoadTextures(bs, CharID):
+    TexNames = []
+    TexCount = bs.readShort()
+    texList = []
+    for E in range(0, TexCount):
+        TexC = bs.readByte()
+        H = bs.readBytes(TexC).decode("ASCII").rstrip("\0")
+        TexNames.append(H)
+        Offsets = bs.readInt()
+        Return = bs.tell()
+        bs.seek(Offsets)
+        texList.append(texLoadTexSet(bs, TexNames[E]))
+        bs.seek(Return)
+    return texList, TexNames
+
 
 def noepyLoadModel(data, mdlList):
     Skin = 1
     bs = NoeBitStream(data)
     ctx = rapi.rpgCreateContext()
+    rapi.rpgSetOption(noesis.RPGOPT_MORPH_RELATIVEPOSITIONS, 1)
+    rapi.rpgSetOption(noesis.RPGOPT_MORPH_RELATIVENORMALS, 1)
+    CharID = rapi.getLocalFileName(rapi.getInputName()).rsplit("_obj.bin", 1)[0]
+    folderName = rapi.getDirForFilePath(rapi.getInputName())
+    if rapi.checkFileExists(folderName+CharID+str("_tex.bin")):
+        print("Loading Textures")
+        TexFile = rapi.loadIntoByteArray(folderName+CharID+str("_tex.bin"))
+        tex = NoeBitStream(TexFile)
+        texList, TexNames = LoadTextures(tex, CharID)
+    else:
+        TexFile = rapi.loadPairedFileOptional("Fate Grand Order Arcade", "_tex.bin")
+        if TexFile != None:
+            tex = NoeBitStream(TexFile)
+            texList, TexNames = LoadTextures(tex, CharID)
+        else:
+            texList = []
+            TexNames = []
     bs.seek(4)
     ObjCount = bs.readInt()
     ObjDataTableLoc = bs.readInt64()
@@ -420,7 +569,6 @@ def noepyLoadModel(data, mdlList):
         B25 = ObjListBlock[25]+BlockLOC
         StringBlockC = ObjListBlock[38]
         StringBlockLOC = ObjListBlock[39]+BlockLOC
-        #print(Names[M], UNK4, AttribLOC, VertexLOC, FaceLOC)
         O = ObjData()
         O.AttribLOC = AttribLOC
         O.UNK4LOC = UNK4
@@ -439,6 +587,9 @@ def noepyLoadModel(data, mdlList):
         O.MorphDC = ObjListBlock[28]
         O.MorphC = ObjListBlock[30]
         O.MorphNames = ObjListBlock[31]+BlockLOC
+        O.TextureList = ObjListBlock[23]+BlockLOC
+        O.TexBind = ObjListBlock[18]+BlockLOC
+        O.TexBindC = ObjListBlock[17]
         ObjList.append(O)
         print(O.__dict__)
     V_COL = 128
@@ -453,7 +604,9 @@ def noepyLoadModel(data, mdlList):
         Skip = 0
         print(C.__dict__)
         S = GetStrings(bs, C.StringLOC, C.StringC)
-        MM = GetMaterials(bs, C.Mats, C.MatC, S)
+        T, T2 = GetTextureList(bs, C.TextureList, ObjTables[M], S)
+        E = GetUNK18(bs, C.TexBind, C.TexBindC, TexNames)
+        MM, MatList = GetMaterials(bs, C.Mats, C.MatC, S, E)
         U = GetUNK4(bs, C.UNK4LOC, C.UNK4Count)
         A = GetAttrib(bs, C.AttribLOC, C.SubCount)
         if C.Bone25 == ObjTables[M]:
@@ -490,7 +643,7 @@ def noepyLoadModel(data, mdlList):
                 FaceBlock = bs.readBytes(CA.FaceCount*2)
                 if UC.MorphCount:
                     print(X, len(MN), MorphTotal)
-                    MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, CMD)
+                    MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, CMD, MM[CA.UNKInt[0]].Name)
                 print(M, SC, S[UC.UNKID]+"_"+str(SC))
                 rapi.rpgSetName(S[UC.UNKID]+"_"+str(SC))
                 rapi.rpgSetMaterial(MM[CA.UNKInt[0]].Name)
@@ -504,7 +657,7 @@ def noepyLoadModel(data, mdlList):
                 tangent = rapi.decodeTangents32(tang, 4, -7, -7, -7, -7, NOE_LITTLEENDIAN)
                 rapi.rpgBindPositionBufferOfs(VertBlock, noesis.RPGEODATA_FLOAT, UC.VStride, 0)
                 rapi.rpgBindNormalBuffer(norm, noesis.RPGEODATA_FLOAT, 12)
-                rapi.rpgBindTangentBuffer(tangent, noesis.RPGEODATA_FLOAT, 12)
+                #rapi.rpgBindTangentBuffer(tangent, noesis.RPGEODATA_FLOAT, 12)
                 Push = 16
                 if UC.DataType & V_UV == V_UV:
                     Push += 4
@@ -574,13 +727,15 @@ def noepyLoadModel(data, mdlList):
             Add += UC.UseCount
             rapi.rpgClearBufferBinds()
         mdl = rapi.rpgConstructModel()
+        mdl.setModelMaterials(NoeModelMaterials(texList, MatList))
         if B25L:
             B25L = rapi.multiplyBones(B25L)
             mdl.setBones(B25L)
         mdlList.append(mdl)
     return 1
 
-def MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MT):
+def MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MT, Name):
+    BindMorph = 0
     bs.seek((C.VLOC+CA.VertexPush)+(CA.VertexCount*UC.VStride))
     MD = MT
     for Mor in range(0, UC.MorphCount):
@@ -592,11 +747,15 @@ def MorphStuff(bs, S, UC, SC, CA, FaceBlock, C, MN, MT):
         for Mo in range(0, CA.VertexCount):
             MorphNormals+= Morphs[Mo*UC.VStride+12:Mo*UC.VStride+12+4]
         norm = rapi.decodeNormals32(MorphNormals, 4, -10, -10, -10, NOE_LITTLEENDIAN)
-        rapi.rpgBindPositionBufferOfs(Morphs, noesis.RPGEODATA_FLOAT, UC.VStride, 0)
-        rapi.rpgBindNormalBuffer(norm, noesis.RPGEODATA_FLOAT, 12)
-                        # rapi.rpgFeedMorphTargetPositionsOfs(Morphs, noesis.RPGEODATA_FLOAT, UC.VStride, 0)
-                        #rapi.rpgFeedMorphTargetNormals(MorphNormals, noesis.RPGEODATA_FLOAT, 12)
-                        # rapi.rpgCommitMorphFrame(CA.VertexCount)
-                    # rapi.rpgCommitMorphFrameSet()
-        rapi.rpgBindUV1BufferOfs(Morphs, noesis.RPGEODATA_USHORT, UC.VStride, 20)
-        rapi.rpgCommitTriangles(FaceBlock, noesis.RPGEODATA_USHORT, CA.FaceCount, noesis.RPGEO_TRIANGLE_STRIP, 1)
+        if BindMorph:
+            rapi.rpgFeedMorphTargetPositionsOfs(Morphs, noesis.RPGEODATA_FLOAT, UC.VStride, 0)
+            rapi.rpgFeedMorphTargetNormals(norm, noesis.RPGEODATA_FLOAT, 12)
+            rapi.rpgCommitMorphFrame(CA.VertexCount)
+        else:
+            rapi.rpgSetMaterial(Name)
+            rapi.rpgBindPositionBufferOfs(Morphs, noesis.RPGEODATA_FLOAT, UC.VStride, 0)
+            rapi.rpgBindNormalBuffer(norm, noesis.RPGEODATA_FLOAT, 12)
+            rapi.rpgBindUV1BufferOfs(Morphs, noesis.RPGEODATA_USHORT, UC.VStride, 20)
+            rapi.rpgCommitTriangles(FaceBlock, noesis.RPGEODATA_USHORT, CA.FaceCount, noesis.RPGEO_TRIANGLE_STRIP, 1)
+    if BindMorph:
+        rapi.rpgCommitMorphFrameSet()
