@@ -445,6 +445,8 @@ def getTextureFormat(format):
         return noesis.FOURCC_DXT3
     elif format == 109:
         return noesis.FOURCC_DXT5
+    elif format == 110:
+        return noesis.FOURCC_DXT5
     elif format == 112:
         return noesis.FOURCC_ATI1
     elif format == 115:
